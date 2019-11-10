@@ -6,8 +6,8 @@
 
 struct GLFWwindow;
 
-#define THROW_RUNTIME_ERROR(msg) \
-	throw std::runtime_error(__FUNCTION__ ":\n\t" msg)
+#define THROW_RUNTIME_ERROR(msg)                                               \
+    throw std::runtime_error(__FUNCTION__ ":\n\t" msg)
 
 #ifdef NDEBUG
 const bool ENABLE_VALIDATION_LAYERS = false;
@@ -17,24 +17,26 @@ const bool ENABLE_VALIDATION_LAYERS = true;
 
 class Engine
 {
-public:
-	void init();
-	void update();
-	void render();
+  public:
+    void init();
+    void update();
+    void render();
 
-	void cleanup();
+    void cleanup();
 
-	bool IsRunning();
+    bool IsRunning();
 
-private:
-	void initWindow();
-	void createInstance();
+  private:
+    void initWindow();
+    void createInstance();
+    void setupDebugMessenger();
 
-	int window_width = 0;
-	int window_height = 0;
+    int window_width = 0;
+    int window_height = 0;
 
-	GLFWwindow* window = nullptr;
+    GLFWwindow* window = nullptr;
 
-
-	vk::Instance vk_instance;
+    vk::Instance vk_instance;
+    vk::DispatchLoaderDynamic dldi;
+    vk::DebugUtilsMessengerEXT debug_messenger;
 };
