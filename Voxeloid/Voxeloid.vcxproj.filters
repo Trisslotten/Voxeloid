@@ -38,10 +38,14 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />
-    <None Include="shaders\shader.frag" />
-    <None Include="shaders\shader.vert" />
     <None Include="shaders\compile.bat">
       <Filter>Source Files</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="shaders\shader.frag" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="shaders\shader.vert" />
   </ItemGroup>
 </Project>
