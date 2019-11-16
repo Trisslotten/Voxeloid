@@ -9,7 +9,7 @@ int main()
 		Engine engine;
 		engine.init();
 
-		while (engine.IsRunning())
+		while (engine.isRunning())
 		{
 			engine.update();
 		}

@@ -6,10 +6,13 @@ Language:  Cpp
 DerivePointerAlignment: false
 PointerAlignment: Left
 AlignTrailingComments: true
+AlignEscapedNewlines: DontAlign
+AlignAfterOpenBracket: Align
 #AlignAfterOpenBracket: Align
 #AlignConsecutiveAssignments: true
 #AlignConsecutiveDeclarations: true
-#AllowAllArgumentsOnNextLine: true
+#AllowAllArgumentsOnNextLine: false
+IndentWrappedFunctionNames: true
 #AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: true 
@@ -26,7 +29,7 @@ BreakBeforeBraces: Allman
 BreakStringLiterals: false
 
 CompactNamespaces: false
-Cpp11BracedListStyle: true
+Cpp11BracedListStyle: false
 FixNamespaceComments: true
 IncludeBlocks: Regroup
 
