@@ -2,8 +2,6 @@
 
 #include "renderer.hpp"
 
-
-
 class Engine
 {
   public:
