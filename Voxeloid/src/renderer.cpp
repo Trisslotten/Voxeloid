@@ -2,13 +2,12 @@
 
 #include "util/runtimeerror.hpp"
 
-#pragma warning(push, 0)
 #include <GLFW/glfw3.h>
 #include <fstream>
+#include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <iostream>
 #include <vulkan/vulkan.hpp>
-#pragma warning(pop)
 
 namespace
 {
@@ -139,8 +138,8 @@ static std::vector<char> readFile(const std::string& filename)
 
 void Renderer::init()
 {
-    window_width = 800;
-    window_height = 600;
+    window_width = 1600;
+    window_height = 900;
 
     initWindow();
     createInstance();
@@ -154,19 +153,31 @@ void Renderer::init()
     createSwapChain();
     createImageViews();
     createRenderPass();
+	createDescriptorSetLayout();
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
+    createUniformBuffers();
+	createDescriptorPool();
+	createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
 }
 
 void Renderer::cleanup()
 {
-	device.waitIdle();
+    device.waitIdle();
 
-	for(auto fence : in_flight_fences)
-		device.destroyFence(fence);
+    for (size_t i = 0; i < swap_chain_images.size(); i++)
+    {
+        device.destroyBuffer(uniform_buffers[i]);
+        device.freeMemory(uniform_buffers_memory[i]);
+    }
+
+	device.destroyDescriptorPool(descriptor_pool);
+
+    for (auto fence : in_flight_fences)
+        device.destroyFence(fence);
     for (auto semaphore : image_available_semaphores)
         device.destroySemaphore(semaphore);
     for (auto semaphore : render_finished_semaphores)
@@ -189,6 +200,8 @@ void Renderer::cleanup()
         device.destroyImageView(image_view);
     }
 
+    device.destroyDescriptorSetLayout(descriptor_set_layout);
+
     device.destroySwapchainKHR(swap_chain);
     device.destroy();
 
@@ -206,18 +219,21 @@ void Renderer::cleanup()
 
 void Renderer::render()
 {
-	device.waitForFences(in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-	
+    device.waitForFences(in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+
     auto result = device.acquireNextImageKHR(
         swap_chain, UINT64_MAX, image_available_semaphores[current_frame], {});
     uint32_t image_index = result.value;
 
-	if (fences_used[image_index])
-	{
-		device.waitForFences(images_in_flight[image_index], VK_TRUE, UINT64_MAX);
-	}
-	images_in_flight[image_index] = in_flight_fences[current_frame];
-	fences_used[image_index] = true;
+    if (fences_used[image_index])
+    {
+        device.waitForFences(
+            images_in_flight[image_index], VK_TRUE, UINT64_MAX);
+    }
+    images_in_flight[image_index] = in_flight_fences[current_frame];
+    fences_used[image_index] = true;
+
+    updateUniformBuffer(image_index);
 
     vk::SubmitInfo submit_info;
 
@@ -239,7 +255,7 @@ void Renderer::render()
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-	device.resetFences(in_flight_fences[current_frame]);
+    device.resetFences(in_flight_fences[current_frame]);
     graphics_queue.submit({ submit_info }, in_flight_fences[current_frame]);
 
     vk::PresentInfoKHR present_info;
@@ -254,10 +270,29 @@ void Renderer::render()
 
     present_queue.presentKHR(present_info);
 
+    fps_counter++;
+
     current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void Renderer::updateWindow() { glfwPollEvents(); }
+void Renderer::updateWindow()
+{
+    glfwPollEvents();
+
+    dt = timer.Restart();
+
+    if (fps_timer.Elapsed() > 1.0)
+    {
+        double elapsed = fps_timer.Restart();
+
+        double fps = fps_counter / elapsed;
+
+        std::string title = "Vulkan " + std::to_string(fps);
+        glfwSetWindowTitle(window, title.c_str());
+
+        fps_counter = 0;
+    }
+}
 
 bool Renderer::isRunning() { return !glfwWindowShouldClose(window); }
 
@@ -521,6 +556,83 @@ void Renderer::createRenderPass()
     render_pass = device.createRenderPass(render_pass_info);
 }
 
+void Renderer::createDescriptorSetLayout()
+{
+    vk::DescriptorSetLayoutBinding ubo_layout_binding;
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags =
+        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+
+    vk::DescriptorSetLayoutCreateInfo layout_info = {};
+    layout_info.bindingCount = 1;
+    layout_info.pBindings = &ubo_layout_binding;
+
+    descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
+}
+
+void Renderer::createUniformBuffers()
+{
+    vk::DeviceSize buffer_size = 2 * sizeof(glm::vec4);
+
+    uniform_buffers.resize(swap_chain_images.size());
+    uniform_buffers_memory.resize(swap_chain_images.size());
+
+    for (size_t i = 0; i < swap_chain_images.size(); i++)
+    {
+        createBuffer(buffer_size,
+                     vk::BufferUsageFlagBits::eUniformBuffer,
+                     vk::MemoryPropertyFlagBits::eHostVisible |
+                         vk::MemoryPropertyFlagBits::eHostCoherent,
+                     uniform_buffers[i],
+                     uniform_buffers_memory[i]);
+    }
+}
+
+void Renderer::createDescriptorPool()
+{
+	vk::DescriptorPoolSize pool_size;
+	pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
+
+	vk::DescriptorPoolCreateInfo pool_info;
+	pool_info.poolSizeCount = 1;
+	pool_info.pPoolSizes = &pool_size;
+	pool_info.maxSets = static_cast<uint32_t>(swap_chain_images.size());
+
+	descriptor_pool = device.createDescriptorPool(pool_info);
+}
+
+void Renderer::createDescriptorSets()
+{
+	std::vector<vk::DescriptorSetLayout> layouts(swap_chain_images.size(), descriptor_set_layout);
+	vk::DescriptorSetAllocateInfo alloc_info;
+	alloc_info.descriptorPool = descriptor_pool;
+	alloc_info.descriptorSetCount = static_cast<uint32_t>(swap_chain_images.size());
+	alloc_info.pSetLayouts = layouts.data();
+
+	descriptor_sets = device.allocateDescriptorSets(alloc_info);
+
+	for (size_t i = 0; i < swap_chain_images.size(); i++)
+	{
+		vk::DescriptorBufferInfo buffer_info;
+		buffer_info.buffer = uniform_buffers[i];
+		buffer_info.offset = 0;
+		buffer_info.range = 2*sizeof(glm::vec4);
+
+		vk::WriteDescriptorSet descriptor_write;
+		descriptor_write.dstSet = descriptor_sets[i];
+		descriptor_write.dstBinding = 0;
+		descriptor_write.dstArrayElement = 0;
+		descriptor_write.descriptorType = vk::DescriptorType::eUniformBuffer;
+		descriptor_write.descriptorCount = 1;
+		descriptor_write.pBufferInfo = &buffer_info;
+
+		device.updateDescriptorSets(descriptor_write, {});
+	}
+
+}
+
 void Renderer::createGraphicsPipeline()
 {
     auto vert_shader_code = readFile("shaders/shader_vert.spv");
@@ -613,8 +725,8 @@ void Renderer::createGraphicsPipeline()
     color_blending.blendConstants[3] = 0.0f;
 
     vk::PipelineLayoutCreateInfo pipeline_layout_info;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pSetLayouts = nullptr;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 0;
     pipeline_layout_info.pPushConstantRanges = nullptr;
 
@@ -704,6 +816,10 @@ void Renderer::createCommandBuffers()
                                        vk::SubpassContents::eInline);
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                                     graphics_pipeline);
+
+
+		command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, descriptor_sets[i], {});
+
         command_buffer.draw(3, 1, 0, 0);
         command_buffer.endRenderPass();
 
@@ -716,10 +832,10 @@ void Renderer::createSyncObjects()
     vk::SemaphoreCreateInfo semaphore_info;
 
     vk::FenceCreateInfo fence_info;
-	fence_info.flags = vk::FenceCreateFlagBits::eSignaled;
+    fence_info.flags = vk::FenceCreateFlagBits::eSignaled;
 
-	images_in_flight.resize(swap_chain_images.size(), {});
-	fences_used.resize(swap_chain_images.size(), false);
+    images_in_flight.resize(swap_chain_images.size(), {});
+    fences_used.resize(swap_chain_images.size(), false);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -730,6 +846,38 @@ void Renderer::createSyncObjects()
 
         in_flight_fences.push_back(device.createFence(fence_info));
     }
+}
+
+void Renderer::updateUniformBuffer(uint32_t current_image)
+{
+    float speed = 1.0 * dt;
+    float forward = 0;
+    float right = 0;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) forward += speed;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) forward -= speed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) right += speed;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) right -= speed;
+
+    float rot_speed = 1.0 * dt;
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) pitch += rot_speed;
+    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) pitch -= rot_speed;
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) yaw += rot_speed;
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) yaw -= rot_speed;
+
+    glm::vec3 camera_dir = glm::quat(glm::vec3(0, yaw, 0)) *
+                 glm::quat(glm::vec3(0, 0, pitch)) * glm::vec3(1,0,0);
+	
+
+    glm::vec3 side = glm::cross(glm::vec3(0, 1, 0), camera_dir);
+    camera_pos += camera_dir * forward + side * right;
+
+    glm::vec4 vectors[2] = { glm::vec4(camera_pos, 0),
+                             glm::vec4(glm::normalize(camera_dir), 0) };
+
+    void* data = device.mapMemory(
+        uniform_buffers_memory[current_image], 0, 2 * sizeof(glm::vec4));
+    memcpy(data, &vectors, 2 * sizeof(glm::vec4));
+    device.unmapMemory(uniform_buffers_memory[current_image]);
 }
 
 QueueFamilyIndices Renderer::findQueueFamilies(vk::PhysicalDevice device)
@@ -820,4 +968,47 @@ vk::ShaderModule Renderer::createShaderModule(const std::vector<char>& code)
     create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     return device.createShaderModule(create_info);
+}
+
+void Renderer::createBuffer(vk::DeviceSize size,
+                            vk::BufferUsageFlags usage,
+                            vk::MemoryPropertyFlags properties,
+                            vk::Buffer& buffer,
+                            vk::DeviceMemory& bufferMemory)
+{
+    vk::BufferCreateInfo buffer_info = {};
+    buffer_info.size = size;
+    buffer_info.usage = usage;
+    buffer_info.sharingMode = vk::SharingMode::eExclusive;
+
+    buffer = device.createBuffer(buffer_info);
+
+    auto mem_requirements = device.getBufferMemoryRequirements(buffer);
+
+    vk::MemoryAllocateInfo allocInfo = {};
+    allocInfo.allocationSize = mem_requirements.size;
+    allocInfo.memoryTypeIndex =
+        findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+    bufferMemory = device.allocateMemory(allocInfo);
+
+    device.bindBufferMemory(buffer, bufferMemory, 0);
+}
+
+uint32_t Renderer::findMemoryType(uint32_t typeFilter,
+                                  vk::MemoryPropertyFlags properties)
+{
+    auto mem_properties = physical_device.getMemoryProperties();
+
+    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (1 << i)) &&
+            (mem_properties.memoryTypes[i].propertyFlags & properties) ==
+                properties)
+        {
+            return i;
+        }
+    }
+
+    THROW_RUNTIME_ERROR("Failed to find suitable memory type!");
 }

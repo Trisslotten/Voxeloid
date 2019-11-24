@@ -1,7 +1,4 @@
-
-#pragma warning (push, 0)
 #include <iostream>
-#pragma warning (pop)
 
 #include "engine.hpp"
 
@@ -22,6 +19,8 @@ int main()
 	{
 		std::cerr << e.what() << std::endl;
 	}
+
+	//system("pause");
 
 	return EXIT_SUCCESS;
 }

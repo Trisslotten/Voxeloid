@@ -38,6 +38,9 @@
     <ClInclude Include="src\util\includevulkan.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\util\timer.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />
@@ -46,9 +49,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Media Include="shaders\shader.frag" />
-  </ItemGroup>
-  <ItemGroup>
     <CustomBuild Include="shaders\shader.vert" />
+    <CustomBuild Include="shaders\shader.frag" />
   </ItemGroup>
 </Project>

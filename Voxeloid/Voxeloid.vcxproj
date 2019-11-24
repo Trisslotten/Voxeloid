@@ -161,21 +161,24 @@
     <ClInclude Include="src\renderer.hpp" />
     <ClInclude Include="src\util\includevulkan.hpp" />
     <ClInclude Include="src\util\runtimeerror.hpp" />
+    <ClInclude Include="src\util\timer.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />
     <None Include="shaders\compile.bat" />
-    <Media Include="shaders\shader.frag">
+    <CustomBuild Include="shaders\shader.frag">
       <FileType>Document</FileType>
-    </Media>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">shaders/compile.bat</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">shaders/compile.bat</Command>
+    </CustomBuild>
     <CustomBuild Include="shaders\shader.vert">
       <FileType>Document</FileType>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">shaders/compile.bat</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">shaders/compile.bat</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
-      <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</TreatOutputAsContent>
-      <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</TreatOutputAsContent>
+      <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</TreatOutputAsContent>
+      <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</TreatOutputAsContent>
     </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
