@@ -153,13 +153,13 @@ void Renderer::init()
     createSwapChain();
     createImageViews();
     createRenderPass();
-	createDescriptorSetLayout();
+    createDescriptorSetLayout();
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
     createUniformBuffers();
-	createDescriptorPool();
-	createDescriptorSets();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -174,7 +174,7 @@ void Renderer::cleanup()
         device.freeMemory(uniform_buffers_memory[i]);
     }
 
-	device.destroyDescriptorPool(descriptor_pool);
+    device.destroyDescriptorPool(descriptor_pool);
 
     for (auto fence : in_flight_fences)
         device.destroyFence(fence);
@@ -592,45 +592,46 @@ void Renderer::createUniformBuffers()
 
 void Renderer::createDescriptorPool()
 {
-	vk::DescriptorPoolSize pool_size;
-	pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
+    vk::DescriptorPoolSize pool_size;
+    pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
 
-	vk::DescriptorPoolCreateInfo pool_info;
-	pool_info.poolSizeCount = 1;
-	pool_info.pPoolSizes = &pool_size;
-	pool_info.maxSets = static_cast<uint32_t>(swap_chain_images.size());
+    vk::DescriptorPoolCreateInfo pool_info;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    pool_info.maxSets = static_cast<uint32_t>(swap_chain_images.size());
 
-	descriptor_pool = device.createDescriptorPool(pool_info);
+    descriptor_pool = device.createDescriptorPool(pool_info);
 }
 
 void Renderer::createDescriptorSets()
 {
-	std::vector<vk::DescriptorSetLayout> layouts(swap_chain_images.size(), descriptor_set_layout);
-	vk::DescriptorSetAllocateInfo alloc_info;
-	alloc_info.descriptorPool = descriptor_pool;
-	alloc_info.descriptorSetCount = static_cast<uint32_t>(swap_chain_images.size());
-	alloc_info.pSetLayouts = layouts.data();
+    std::vector<vk::DescriptorSetLayout> layouts(swap_chain_images.size(),
+                                                 descriptor_set_layout);
+    vk::DescriptorSetAllocateInfo alloc_info;
+    alloc_info.descriptorPool = descriptor_pool;
+    alloc_info.descriptorSetCount =
+        static_cast<uint32_t>(swap_chain_images.size());
+    alloc_info.pSetLayouts = layouts.data();
 
-	descriptor_sets = device.allocateDescriptorSets(alloc_info);
+    descriptor_sets = device.allocateDescriptorSets(alloc_info);
 
-	for (size_t i = 0; i < swap_chain_images.size(); i++)
-	{
-		vk::DescriptorBufferInfo buffer_info;
-		buffer_info.buffer = uniform_buffers[i];
-		buffer_info.offset = 0;
-		buffer_info.range = 2*sizeof(glm::vec4);
+    for (size_t i = 0; i < swap_chain_images.size(); i++)
+    {
+        vk::DescriptorBufferInfo buffer_info;
+        buffer_info.buffer = uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = 2 * sizeof(glm::vec4);
 
-		vk::WriteDescriptorSet descriptor_write;
-		descriptor_write.dstSet = descriptor_sets[i];
-		descriptor_write.dstBinding = 0;
-		descriptor_write.dstArrayElement = 0;
-		descriptor_write.descriptorType = vk::DescriptorType::eUniformBuffer;
-		descriptor_write.descriptorCount = 1;
-		descriptor_write.pBufferInfo = &buffer_info;
+        vk::WriteDescriptorSet descriptor_write;
+        descriptor_write.dstSet = descriptor_sets[i];
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = vk::DescriptorType::eUniformBuffer;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
 
-		device.updateDescriptorSets(descriptor_write, {});
-	}
-
+        device.updateDescriptorSets(descriptor_write, {});
+    }
 }
 
 void Renderer::createGraphicsPipeline()
@@ -817,8 +818,11 @@ void Renderer::createCommandBuffers()
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                                     graphics_pipeline);
 
-
-		command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, descriptor_sets[i], {});
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                          pipeline_layout,
+                                          0,
+                                          descriptor_sets[i],
+                                          {});
 
         command_buffer.draw(3, 1, 0, 0);
         command_buffer.endRenderPass();
@@ -865,8 +869,8 @@ void Renderer::updateUniformBuffer(uint32_t current_image)
     if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) yaw -= rot_speed;
 
     glm::vec3 camera_dir = glm::quat(glm::vec3(0, yaw, 0)) *
-                 glm::quat(glm::vec3(0, 0, pitch)) * glm::vec3(1,0,0);
-	
+                           glm::quat(glm::vec3(0, 0, pitch)) *
+                           glm::vec3(1, 0, 0);
 
     glm::vec3 side = glm::cross(glm::vec3(0, 1, 0), camera_dir);
     camera_pos += camera_dir * forward + side * right;

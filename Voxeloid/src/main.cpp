@@ -1,26 +1,29 @@
-#include <iostream>
-
 #include "engine.hpp"
+
+#include <iostream>
 
 int main()
 {
-	try
-	{
-		Engine engine;
-		engine.init();
+	SparseVoxelOctree svo;
+	/*
+    try
+    {
+        Engine engine;
+        engine.init();
 
-		while (engine.isRunning())
-		{
-			engine.update();
-		}
-		engine.cleanup();
-	}
-	catch (const std::exception& e)
-	{
-		std::cerr << e.what() << std::endl;
-	}
+        while (engine.isRunning())
+        {
+            engine.update();
+        }
+        engine.cleanup();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << std::endl;
+    }
+	*/
 
-	//system("pause");
+	system("pause");
 
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }

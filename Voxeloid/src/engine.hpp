@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer.hpp"
+#include "sparsevoxeloctree.hpp"
 
 class Engine
 {
@@ -9,9 +10,9 @@ class Engine
     void update();
     void cleanup();
 
-	bool isRunning() { return renderer.isRunning(); }
+    bool isRunning() { return renderer.isRunning(); }
 
   private:
+    Renderer renderer;
 
-	  Renderer renderer;
 };
