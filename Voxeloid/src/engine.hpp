@@ -1,7 +1,6 @@
 #pragma once
 
 #include "renderer.hpp"
-#include "sparsevoxeloctree.hpp"
 
 class Engine
 {
