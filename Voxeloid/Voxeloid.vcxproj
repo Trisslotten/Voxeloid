@@ -155,12 +155,12 @@
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\renderer.cpp" />
-    <ClCompile Include="src\sparsevoxeloctree.cpp" />
+    <ClCompile Include="src\voxeloctree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\engine.hpp" />
     <ClInclude Include="src\renderer.hpp" />
-    <ClInclude Include="src\sparsevoxeloctree.hpp" />
+    <ClInclude Include="src\voxeloctree.hpp" />
     <ClInclude Include="src\util\includevulkan.hpp" />
     <ClInclude Include="src\util\runtimeerror.hpp" />
     <ClInclude Include="src\util\timer.hpp" />

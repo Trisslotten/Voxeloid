@@ -24,7 +24,7 @@
     <ClCompile Include="src\renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\sparsevoxeloctree.cpp">
+    <ClCompile Include="src\voxeloctree.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -44,7 +44,7 @@
     <ClInclude Include="src\util\timer.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\sparsevoxeloctree.hpp">
+    <ClInclude Include="src\voxeloctree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

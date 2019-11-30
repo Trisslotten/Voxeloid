@@ -1,7 +1,7 @@
 #include "engine.hpp"
 
 #include <iostream>
-#include "sparsevoxeloctree.hpp"
+#include "voxeloctree.hpp"
 #include "util/timer.hpp"
 
 
@@ -9,7 +9,7 @@ int main()
 {
 	Timer t;
 	t.Restart();
-	SparseVoxelOctree svo;
+	VoxelOctree svo;
 	double time = t.Elapsed();
 
 	std::cout << "Elapsed: " << time << "\n";
