@@ -50,50 +50,52 @@ bool VoxelOctree::isVoxel(glm::vec3 pos)
     }
 
     uint8_t last_child_exists = 0;
+	uint8_t my_loc = 0;
     for (int i = 0; i < MAX_DEPTH; i++)
     {
-        uint8_t child = 0;
-		for (int j = 0; j < 3; j++)
-		{
-			if (pos[j] > v_pos[j])
-			{
-				child |= 1 << j;
-				v_pos[j] += offset;
-			}
-			else
-			{
-				v_pos[j] -= offset;
-			}
-		}
+        uint8_t child_loc = 0;
+        for (int j = 0; j < 3; j++)
+        {
+            if (pos[j] > v_pos[j])
+            {
+                child_loc |= 1 << j;
+                v_pos[j] += offset;
+            }
+            else
+            {
+                v_pos[j] -= offset;
+            }
+        }
+        offset *= 0.5f;
 
-        offset *= 0.5;
 
         auto iter = nodes.find(loc);
         if (iter != nodes.end())
         {
-            uint8_t child_bit = 1 << child;
+            uint8_t child_bit = 1 << child_loc;
 
-            last_child_exists = iter->second.child_exits;
-
-            if ((last_child_exists & child_bit) == 0)
+			uint8_t child_exists = iter->second.child_exits;
+            if ((child_exists & child_bit) == 0)
             {
                 result = false;
                 break;
             }
-        }
-        else if (last_child_exists == 255)
-        {
-            result = true;
-            break;
-        }
-        else
-        {
-            // this should not happen
-            result = false;
-            break;
-        }
 
-        loc = (loc << 3) & child;
+			last_child_exists = child_exists;
+			my_loc = child_loc;
+		}
+		else if (last_child_exists & (1 << my_loc))
+		{
+			result = true;
+			break; 
+		}
+		else
+		{
+			result = false;
+			break;
+		}
+
+        loc = (loc << 3) | child_loc;
     }
 
     return result;
@@ -103,7 +105,7 @@ glm::vec3 VoxelOctree::calcPos(uint32_t loc_code)
 {
     float offset = 0.5f;
     glm::vec3 result{ 0 };
-    for (int i = MAX_DEPTH; i >= 0; i--)
+    for (int i = MAX_DEPTH-1; i >= 0; i--)
     {
         uint32_t curr_loc = loc_code >> (i * 3);
 
@@ -128,7 +130,7 @@ glm::vec3 VoxelOctree::calcPos(uint32_t loc_code)
     return result;
 }
 
-bool VoxelOctree::noise(glm::vec3 pos) { return glm::perlin(pos) > 0.0; }
+bool VoxelOctree::noise(glm::vec3 pos) { return glm::perlin(3.f*pos) > 0.0; }
 
 VoxelOctree::VoxelOctree()
 {
@@ -136,7 +138,7 @@ VoxelOctree::VoxelOctree()
 
     createIndirectTexture();
 
-    int size = 50;
+    int size = 100;
     for (int y = 0; y < size; y++)
     {
         for (int x = 0; x < size; x++)
@@ -144,14 +146,15 @@ VoxelOctree::VoxelOctree()
             glm::vec3 pos{ 0 };
             pos.x = 2.f * x / float(size) - 1.f;
             pos.y = 2.f * y / float(size) - 1.f;
+			pos.z = 0.1;
 
-            if (isVoxel(1.2f * pos))
+            if (isVoxel(1.1f * pos))
             {
-                std::cout << "11";
+                std::cout << "#";
             }
             else
             {
-                std::cout << "  ";
+                std::cout << " ";
             }
         }
         std::cout << "\n";
@@ -164,14 +167,15 @@ VoxelOctree::VoxelOctree()
             glm::vec3 pos{ 0 };
             pos.x = 2.f * x / float(size) - 1.f;
             pos.y = 2.f * y / float(size) - 1.f;
+			pos.z = 0.1;
 
-            if (noise(1.2f * pos))
+            if (noise(1.0f * pos))
             {
-                std::cout << "11";
+                std::cout << "#";
             }
             else
             {
-                std::cout << "  ";
+                std::cout << " ";
             }
         }
         std::cout << "\n";
@@ -334,11 +338,11 @@ uint8_t VoxelOctree::recursiveGenerate(uint8_t curr_child, LocCode loc_code,
     {
         num_checked[map_index]++;
 
-        glm::vec3 pos = calcPos(loc_code);
+        glm::vec3 pos = calcPos(total_loc_code);
 
         if (noise(pos))
         {
-            gen_maps[map_index][total_loc_code] = { 0 };
+            gen_maps[map_index][total_loc_code] = { 255 };
             num_voxels[map_index]++;
             return 1;
         }
@@ -357,8 +361,7 @@ uint8_t VoxelOctree::checkChildren(const LocCode total_loc_code,
                                    const uint8_t depth, uint8_t map_index)
 {
     uint8_t child_exits = 0;
-    bool some_has_voxel = false;
-    bool some_has_empty = false;
+    uint8_t child_has_empty = 0;
 
     for (int i = 0; i < 8; i++)
     {
@@ -369,36 +372,35 @@ uint8_t VoxelOctree::checkChildren(const LocCode total_loc_code,
         if (result & 1)
         {
             child_exits |= child_bit;
-            some_has_voxel = true;
         }
         if (result & 2)
         {
-            some_has_empty = true;
+            child_has_empty |= child_bit;
         }
     }
 
-    if (child_exits == 255U && some_has_voxel && !some_has_empty)
+    if (child_exits)
     {
-        // if all children are voxels and no empty space exists below
         // remove redundant children
         for (int i = 0; i < 8; i++)
         {
             // TODO: idea: create second function that creates nodes to avoid erasing already created
-            LocCode child_loc = (total_loc_code << 3) | i;
-            gen_maps[map_index].erase(child_loc);
+            uint8_t child_bit = 1 << i;
+			bool has_voxel = child_exits & child_bit;
+			bool has_empty = child_has_empty & child_bit;
+            if (has_voxel && !has_empty)
+            {
+                LocCode child_loc = (total_loc_code << 3) | i;
+                gen_maps[map_index].erase(child_loc);
+            }
         }
         gen_maps[map_index][total_loc_code] = { child_exits };
-        return 1;
     }
-    else if (child_exits != 0)
-    {
-        gen_maps[map_index][total_loc_code] = { child_exits };
-        return 1 | 2;
-    }
-    else
-    {
-        return 2;
-    }
+
+    uint8_t result = 0;
+    if (child_exits) result |= 1;
+    if (child_has_empty) result |= 2;
+    return result;
 }
 
 void VoxelOctree::startGeneration()
@@ -407,8 +409,7 @@ void VoxelOctree::startGeneration()
     uint8_t depth = 0;
 
     uint8_t child_exits = 0;
-    bool some_has_voxel = false;
-    bool some_has_empty = false;
+	uint8_t child_has_empty = 0;
 
     std::vector<std::future<uint8_t>> futures;
 
@@ -423,33 +424,35 @@ void VoxelOctree::startGeneration()
         futures[i].wait();
         auto result = futures[i].get();
         uint8_t child_bit = 1 << i;
-        if (result & 1)
-        {
-            child_exits |= child_bit;
-            some_has_voxel = true;
-        }
-        if (result & 2)
-        {
-            some_has_empty = true;
-        }
+		if (result & 1)
+		{
+			child_exits |= child_bit;
+		}
+		if (result & 2)
+		{
+			child_has_empty |= child_bit;
+		}
 
         nodes.insert(gen_maps[i].begin(), gen_maps[i].end());
         gen_maps[i].clear();
     }
 
-    if (child_exits == 255U && some_has_voxel && !some_has_empty)
-    {
-        // if all children are voxels and no empty space exists below
-        // remove redundant children
-        for (int i = 0; i < 8; i++)
-        {
-            LocCode child_loc = (total_loc_code << 3) | i;
-            nodes.erase(child_loc);
-        }
-        nodes[total_loc_code] = { child_exits };
-    }
-    else if (child_exits != 0)
-    {
-        nodes[total_loc_code] = { child_exits };
-    }
+
+	if (child_exits)
+	{
+		// remove redundant children
+		for (int i = 0; i < 8; i++)
+		{
+			// TODO: idea: create second function that creates nodes to avoid erasing already created
+			uint8_t child_bit = 1 << i;
+			bool has_voxel = child_exits & child_bit;
+			bool has_empty = child_has_empty & child_bit;
+			if (has_voxel && !has_empty)
+			{
+				LocCode child_loc = (total_loc_code << 3) | i;
+				nodes.erase(child_loc);
+			}
+		}
+		nodes[total_loc_code] = { child_exits };
+	}
 }

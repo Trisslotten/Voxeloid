@@ -21,7 +21,7 @@ class VoxelOctree
         //uint32_t loc_code;
     };
 
-    const uint8_t MAX_DEPTH = 5;
+    const uint8_t MAX_DEPTH = 6;
 
     //  first bit (1) = some grandchild has voxel
     // second bit (2) = some grandchild has empty space
