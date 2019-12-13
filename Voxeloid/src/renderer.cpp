@@ -984,7 +984,7 @@ void Renderer::updateUniformBuffer(uint32_t current_image)
                            glm::quat(glm::vec3(0, 0, pitch)) *
                            glm::vec3(1, 0, 0);
 
-    glm::vec3 side = glm::cross(glm::vec3(0, 1, 0), camera_dir);
+    glm::vec3 side = normalize(glm::cross(glm::vec3(0, 1, 0), camera_dir));
     camera_pos += camera_dir * forward + side * right;
 
     glm::vec4 vectors[2] = { glm::vec4(camera_pos, 0),

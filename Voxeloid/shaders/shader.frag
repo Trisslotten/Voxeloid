@@ -46,6 +46,7 @@ void main()
 	vec3 color = vec3(0);
 	const int MAX_DEPTH = 5;
 	const float MIN_VOXEL_SIZE = 1.0/pow(2,MAX_DEPTH); 
+	const int NUM_STEPS = 512;
 	float tot_len = 0.0;
 
 	float voxel_size = 0.5;
@@ -57,7 +58,8 @@ void main()
 	vec3 centers_stack[MAX_DEPTH];
 	vec3 center = vec3(0.5);
 
-	for (int i = 0; i < 256; i++) 
+	int i;
+	for (i = 0; i < NUM_STEPS; i++) 
 	{
 		if (exitoctree)
 		{
@@ -79,7 +81,7 @@ void main()
 			vec4 res = texelFetch(tex_indirect, 2*current_cell + offset, 0);
 			ivec4 node_info = ivec4(round(res * 255.0));
 				
-			if (node_info.w == INDIRECT_NODE && depth < MAX_DEPTH)
+			if (node_info.w == INDIRECT_NODE && depth <= MAX_DEPTH)
 			{
 				//color = vec3(0,0,1);
 				centers_stack[depth] = center;
@@ -107,7 +109,7 @@ void main()
 					t += hit.z;
 
 
-				vec3 new_ray_ori = ray_ori + (t+0.00001*MIN_VOXEL_SIZE) * ray_dir;
+				vec3 new_ray_ori = ray_ori + (t+0.01*MIN_VOXEL_SIZE) * ray_dir;
 
 				float vsize2 = voxel_size * 2.0;
 				vec3 vpos2 = vsize2 * (floor(ray_ori/vsize2)+0.5);
@@ -127,6 +129,6 @@ void main()
 			}
 		}
 	}
-
+	//color = vec3(float(i)/NUM_STEPS);
     out_color = vec4(color, 1.0);
 }
