@@ -12,103 +12,121 @@ layout(binding = 0) uniform UniformBufferObject {
 	vec4 cam_dir;
 } ubo;
 
-const int num_steps = 128;
-const float voxel_size = 0.01;
+layout(binding = 1) uniform sampler3D tex_indirect;
 
-//	<https://www.shadertoy.com/view/4dS3Wd>
-//	By Morgan McGuire @morgan3d, http://graphicscodex.com
-//
-float hash(float n) { return fract(sin(n) * 1e4); }
-float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
-// This one has non-ideal tiling properties that I'm still tuning
-float noise(vec3 x) {
-	
-	const vec3 step = vec3(110, 241, 171);
-	vec3 i = floor(x);
-	vec3 f = fract(x);
-	// For performance, compute the base input to a 1D hash from the integer part of the argument and the 
-	// incremental change to the 1D based on the 3D -> 1D wrapping
-    float n = dot(i, step);
-
-	vec3 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(mix( hash(n + dot(step, vec3(0, 0, 0))), hash(n + dot(step, vec3(1, 0, 0))), u.x),
-                   mix( hash(n + dot(step, vec3(0, 1, 0))), hash(n + dot(step, vec3(1, 1, 0))), u.x), u.y),
-               mix(mix( hash(n + dot(step, vec3(0, 0, 1))), hash(n + dot(step, vec3(1, 0, 1))), u.x),
-                   mix( hash(n + dot(step, vec3(0, 1, 1))), hash(n + dot(step, vec3(1, 1, 1))), u.x), u.y), u.z);
+// https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
+vec2 intersectAABB(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+    vec3 tMin = (boxMin - rayOrigin) / rayDir;
+    vec3 tMax = (boxMax - rayOrigin) / rayDir;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return vec2(tNear, tFar);
 }
-
-float map(vec3 p)
+vec3 voxel(vec3 lro, vec3 rd, vec3 ird, float size)
 {
-	p = voxel_size * floor(p/voxel_size);
-
-	p *= 0.5;
-
-	float n = 0.0;
-	n += 0.5*noise(p);
-	n += 0.5*noise(4*p);
-	return n;
+    size *= 0.5;
+    vec3 hit = -(sign(rd)*(lro-size)-size)*ird;   
+    return hit;
 }
 
-vec3 calcNormal(vec3 p)
-{
-	p = voxel_size * (floor(p/voxel_size)+0.5);
-	vec2 t = vec2(voxel_size, 0);
-	return normalize(vec3(
-		map(p - t.xyy) - map(p + t.xyy), 
-		map(p - t.yxy) - map(p + t.yxy),
-		map(p - t.yyx) - map(p + t.yyx)));
-}
+const int INDIRECT_LEAF = 255;
+const int INDIRECT_EMPTY = 0;
+const int INDIRECT_NODE = 127;
 
 void main() 
 {
 	vec3 ray_dir = normalize(in_ray_dir);
-	vec3 cam_pos = ubo.cam_pos.xyz;
-
+	vec3 ray_ori = ubo.cam_pos.xyz;
 	vec3 s = sign(ray_dir);
 
-	float t = 0;
+	vec3 start = ray_ori;
 
-	vec3 normal = vec3(0);
+	vec3 color = vec3(0);
+	const int MAX_DEPTH = 5;
+	const float MIN_VOXEL_SIZE = 1.0/pow(2,MAX_DEPTH); 
+	float tot_len = 0.0;
 
-	for(int i = 0; i < num_steps; i++) 
+	float voxel_size = 0.5;
+
+	bool exitoctree = false;
+	int depth = 0;
+	ivec3 current_cell = ivec3(0);
+	ivec3 cells_stack[MAX_DEPTH];
+	vec3 centers_stack[MAX_DEPTH];
+	vec3 center = vec3(0.5);
+
+	for (int i = 0; i < 256; i++) 
 	{
-		vec3 point = cam_pos + t * ray_dir;
-		float n = map(point);
-		if(n > 0.3)
+		if (exitoctree)
 		{
-			normal = calcNormal(point);
-			break;
+			depth--;
+
+			current_cell = cells_stack[depth];
+			center = centers_stack[depth];
+
+			voxel_size *= 2.0;
+
+			float vsize2 = voxel_size * 2.0;
+			vec3 vpos2 = vsize2 * (floor(ray_ori/vsize2)+0.5);
+			vec3 new_vpos2 = vsize2 * (floor((ray_ori+vsize2)/vsize2)+0.5);
+			exitoctree = vpos2 != new_vpos2 && (depth > 0);
+		} else {
+			// check current voxel at f_ray_ori
+			vec3 local_ori = mod(ray_ori, 1.0);
+			ivec3 offset = ivec3(lessThan(center, local_ori));
+			vec4 res = texelFetch(tex_indirect, 2*current_cell + offset, 0);
+			ivec4 node_info = ivec4(round(res * 255.0));
+				
+			if (node_info.w == INDIRECT_NODE && depth < MAX_DEPTH)
+			{
+				//color = vec3(0,0,1);
+				centers_stack[depth] = center;
+				cells_stack[depth] = current_cell;
+
+				depth++;
+				voxel_size *= 0.5;
+
+				current_cell = node_info.xyz;
+				center += voxel_size*vec3(offset*2-1);
+			} else if (node_info.w == INDIRECT_LEAF){
+				color = vec3(1,0,0) * smoothstep(4,0,length(start-ray_ori));
+				break;
+			} else {
+				vec3 vpos = voxel_size * (floor(ray_ori/voxel_size)+0.5);
+				vec3 hit = (vpos + 0.5*voxel_size*s - ray_ori)/ray_dir;
+
+				bvec3 mask = lessThan(hit, min(hit.yzx, hit.zxy));
+				float t = 0;// = dot(hit, mask);
+				if(mask.x)
+					t += hit.x;
+				else if(mask.y)
+					t += hit.y;
+				else 
+					t += hit.z;
+
+
+				vec3 new_ray_ori = ray_ori + (t+0.00001*MIN_VOXEL_SIZE) * ray_dir;
+
+				float vsize2 = voxel_size * 2.0;
+				vec3 vpos2 = vsize2 * (floor(ray_ori/vsize2)+0.5);
+				vec3 new_vpos2 = vsize2 * (floor(new_ray_ori/vsize2)+0.5);
+
+				exitoctree = vpos2 != new_vpos2 && (depth > 0);
+
+				ray_ori = new_ray_ori;
+
+				/*
+				if(any(lessThan(ray_ori, vec3(-1))) || any(lessThan(vec3(1), ray_ori)))
+				{
+					color = vec3(0);
+					break;
+				}
+				*/
+			}
 		}
-
-		vec3 v_pos = voxel_size * (floor(point/voxel_size)+0.5);
-		vec3 t_max = (v_pos+0.5*voxel_size*s - point)/ray_dir;
-
-		bvec3 mask = lessThanEqual(t_max, vec3(min(t_max.x, min(t_max.y, t_max.z))));
-
-		if(mask.x)
-			t += t_max.x;
-		else if(mask.y)
-			t += t_max.y;
-		else 
-			t += t_max.z;
-		t += voxel_size*0.01;
 	}
 
-	vec3 surf_pos = cam_pos + t * ray_dir;
-	vec3 light_pos = vec3(0,0,0);
-	vec3 color = vec3(normal);
-	//color = mix(color, vec3(0.5), smoothstep(0, num_steps * voxel_size, t));
-	vec3 l = normalize(light_pos - surf_pos);
-	float a = 1.-clamp(length(light_pos - surf_pos)/10, 0,1);
-	float diffuse = max(a*dot(l,normal), 0);
-
-	vec3 half_vec = normalize(l + -ray_dir);
-	float specular = pow(clamp(dot(normal, half_vec), 0, 1), 100.0);
-
-	color = vec3(diffuse + specular);
-
-	float max_dist = num_steps * voxel_size;
-	color = mix(color, vec3(0), smoothstep(max_dist*0.5, max_dist*0.7, t));
-
-    out_color = vec4(color , 1.0);
+    out_color = vec4(color, 1.0);
 }

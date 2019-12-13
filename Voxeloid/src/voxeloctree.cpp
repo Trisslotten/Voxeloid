@@ -50,7 +50,7 @@ bool VoxelOctree::isVoxel(glm::vec3 pos)
     }
 
     uint8_t last_child_exists = 0;
-	uint8_t my_loc = 0;
+    uint8_t my_loc = 0;
     for (int i = 0; i < MAX_DEPTH; i++)
     {
         uint8_t child_loc = 0;
@@ -68,32 +68,31 @@ bool VoxelOctree::isVoxel(glm::vec3 pos)
         }
         offset *= 0.5f;
 
-
         auto iter = nodes.find(loc);
         if (iter != nodes.end())
         {
             uint8_t child_bit = 1 << child_loc;
 
-			uint8_t child_exists = iter->second.child_exits;
+            uint8_t child_exists = iter->second.child_exits;
             if ((child_exists & child_bit) == 0)
             {
                 result = false;
                 break;
             }
 
-			last_child_exists = child_exists;
-			my_loc = child_loc;
-		}
-		else if (last_child_exists & (1 << my_loc))
-		{
-			result = true;
-			break; 
-		}
-		else
-		{
-			result = false;
-			break;
-		}
+            last_child_exists = child_exists;
+            my_loc = child_loc;
+        }
+        else if (last_child_exists & (1 << my_loc))
+        {
+            result = true;
+            break;
+        }
+        else
+        {
+            result = false;
+            break;
+        }
 
         loc = (loc << 3) | child_loc;
     }
@@ -101,11 +100,49 @@ bool VoxelOctree::isVoxel(glm::vec3 pos)
     return result;
 }
 
+bool VoxelOctree::isVoxel2(glm::vec3 pos)
+{
+    if (glm::any(glm::lessThan(glm::vec3(1), glm::abs(pos))))
+    {
+        // outside octree
+        return false;
+    }
+    float pos_offset = 0.5f;
+    glm::vec3 center{ 0 };
+    glm::ivec3 current_cell{ 0 };
+
+    for (int i = 0; i <= MAX_DEPTH; i++)
+    {
+        glm::vec3 dir = pos - center;
+        glm::ivec3 offset{ 0 };
+        for (int j = 0; j < 3; j++)
+            if (dir[j] > 0) offset[j] += 1;
+
+        size_t index = textureIndex(2 * current_cell + offset);
+        uint8_t node_info = indirect_texture[index + 3];
+
+        switch (node_info)
+        {
+        case INDIRECT_LEAF: return true;
+        case INDIRECT_EMPTY: return false;
+        }
+        // is INDIRECT_NODE, keep going
+
+		glm::vec3 sgn = glm::lessThan(glm::vec3(0), dir);
+        center += pos_offset * (sgn*2.f - 1.f);
+        pos_offset *= 0.5f;
+        for (int j = 0; j < 3; j++)
+            current_cell[j] = indirect_texture[index + j];
+    }
+
+    return false;
+}
+
 glm::vec3 VoxelOctree::calcPos(uint32_t loc_code)
 {
     float offset = 0.5f;
     glm::vec3 result{ 0 };
-    for (int i = MAX_DEPTH-1; i >= 0; i--)
+    for (int i = MAX_DEPTH - 1; i >= 0; i--)
     {
         uint32_t curr_loc = loc_code >> (i * 3);
 
@@ -130,162 +167,93 @@ glm::vec3 VoxelOctree::calcPos(uint32_t loc_code)
     return result;
 }
 
-bool VoxelOctree::noise(glm::vec3 pos) { return glm::perlin(3.f*pos) > 0.0; }
+bool VoxelOctree::noise(glm::vec3 pos) { return glm::perlin(2.f * pos, glm::vec3(4.f)) > 0.3; }
 
 VoxelOctree::VoxelOctree()
 {
     startGeneration();
 
     createIndirectTexture();
-
-    int size = 100;
-    for (int y = 0; y < size; y++)
-    {
-        for (int x = 0; x < size; x++)
-        {
-            glm::vec3 pos{ 0 };
-            pos.x = 2.f * x / float(size) - 1.f;
-            pos.y = 2.f * y / float(size) - 1.f;
-			pos.z = 0.1;
-
-            if (isVoxel(1.1f * pos))
-            {
-                std::cout << "#";
-            }
-            else
-            {
-                std::cout << " ";
-            }
-        }
-        std::cout << "\n";
-    }
-
-    for (int y = 0; y < size; y++)
-    {
-        for (int x = 0; x < size; x++)
-        {
-            glm::vec3 pos{ 0 };
-            pos.x = 2.f * x / float(size) - 1.f;
-            pos.y = 2.f * y / float(size) - 1.f;
-			pos.z = 0.1;
-
-            if (noise(1.0f * pos))
-            {
-                std::cout << "#";
-            }
-            else
-            {
-                std::cout << " ";
-            }
-        }
-        std::cout << "\n";
-    }
-
-    /*
-	for (auto node : nodes)
-	{
-		std::bitset<8> child_exists(node.second.child_exits);
-		std::bitset<sizeof(LocCode) * 8> loc(node.first);
-		std::cout << loc << ": " << child_exists << "\n";
-	}
-
-    for (int z = 0; z < cells_side_length; z++)
-    {
-        for (int y = 0; y < cells_side_length; y++)
-        {
-            for (int x = 0; x < cells_side_length; x++)
-            {
-                std::cout << "(" << x << ", " << y << ", " << z << ")\n";
-                for (int i = 0; i < 8; i++)
-                {
-                    glm::ivec3 offset{ 0 };
-                    if (i & 1) offset.x += 1;
-                    if (i & 2) offset.y += 1;
-                    if (i & 4) offset.z += 1;
-
-                    size_t index =
-                        textureIndex(2 * glm::ivec3(x, y, z) + offset);
-
-                    std::cout << "(" << offset.x << ", " << offset.y << ", "
-                              << offset.z << "): ";
-                    std::cout << (int)indirect_texture[index + 0] << ", ";
-                    std::cout << (int)indirect_texture[index + 1] << ", ";
-                    std::cout << (int)indirect_texture[index + 2] << ", ";
-                    std::cout << (int)indirect_texture[index + 3] << "\n";
-                }
-                std::cout << "\n";
-            }
-        }
-    }
-	*/
 }
 
 void VoxelOctree::createIndirectTexture()
 {
-    size_t side_len = glm::ceil(glm::pow(double(nodes.size()), 1.0 / 3.0));
+    // TODO: some leaf nodes dont exist in nodes but need to exist in indirect texture
+    // therefore 2*
+    size_t side_len = glm::ceil(2 * glm::pow(double(nodes.size()), 1.0 / 3.0));
     std::cout << side_len << "\n";
 
-    indirect_texture.resize(side_len * side_len * side_len * 8 * 4, 99);
+    indirect_texture.resize(side_len * side_len * side_len * 8 * 4,
+                            INDIRECT_EMPTY);
     cells_side_length = side_len;
     tex_side_length = side_len * 2;
 
+    next_free_cell = nextCell(next_free_cell);
     recursiveCreateIndirect(glm::ivec3(0), 1, 0);
 }
 
 void VoxelOctree::recursiveCreateIndirect(glm::ivec3 my_cell, LocCode my_loc,
                                           uint8_t depth)
 {
-    glm::ivec3 child_cells_start = nextCell(next_free_cell);
-    uint8_t child_exits = 0;
+    glm::ivec3 child_cells_start = next_free_cell;
 
-    // node exists because we checked in depth-1
-    Node node = nodes[my_loc];
+    auto curr_iter = nodes.find(my_loc);
+    if (curr_iter == nodes.end() ||
+        (curr_iter->second.child_exits == 255 && depth >= MAX_DEPTH))
+    {
+        // this is leaf node
+
+        for (int i = 0; i < 8; i++)
+        {
+            glm::ivec3 offset{ 0 };
+            if (i & 1) offset.x += 1;
+            if (i & 2) offset.y += 1;
+            if (i & 4) offset.z += 1;
+            size_t index = textureIndex(2 * my_cell + offset);
+
+            indirect_texture[index + 0] = 255;
+            indirect_texture[index + 1] = 0;
+            indirect_texture[index + 2] = 0;
+            indirect_texture[index + 3] = INDIRECT_LEAF;
+        }
+        return;
+    }
+	if (depth > MAX_DEPTH)
+	{
+		return;
+	}
+
+    Node node = curr_iter->second;
 
     for (int i = 0; i < 8; i++)
     {
-        LocCode child_loc = (my_loc << 3) | i;
-        auto iter = nodes.find(child_loc);
-
-        if (node.child_exits == 255 && iter == nodes.end())
-        {
-            // node is leaf containing voxels
-            size_t index = textureIndex(2 * my_cell);
-            indirect_texture[index + 0] = 111;
-            indirect_texture[index + 1] = 111;
-            indirect_texture[index + 2] = 111;
-            indirect_texture[index + 3] = 111;
-
-            // TODO: maybe fill rest of cell
-            break;
-        }
         glm::ivec3 offset{ 0 };
         if (i & 1) offset.x += 1;
         if (i & 2) offset.y += 1;
         if (i & 4) offset.z += 1;
-
-        // populate current cell with info about children
         size_t index = textureIndex(2 * my_cell + offset);
 
-        if (iter != nodes.end())
+        uint8_t child_bit = 1 << i;
+        if (child_bit & node.child_exits)
         {
-            glm::ivec3 indirect = nextCell(next_free_cell, i + 1);
+            // populate current cell with info about children
+
+            glm::ivec3 indirect = next_free_cell;
 
             indirect_texture[index + 0] = indirect.x;
             indirect_texture[index + 1] = indirect.y;
             indirect_texture[index + 2] = indirect.z;
-            indirect_texture[index + 3] = 2;
+            indirect_texture[index + 3] = INDIRECT_NODE;
 
             // "reserve" the current next_free_cell for this child
             next_free_cell = nextCell(next_free_cell);
-
-            child_exits |= 1 << i;
         }
         else
         {
             indirect_texture[index + 0] = 0;
             indirect_texture[index + 1] = 0;
-            indirect_texture[index + 2] = 0;
-            indirect_texture[index + 3] = 0;
+            indirect_texture[index + 2] = 255;
+            indirect_texture[index + 3] = INDIRECT_EMPTY;
         }
     }
 
@@ -293,7 +261,7 @@ void VoxelOctree::recursiveCreateIndirect(glm::ivec3 my_cell, LocCode my_loc,
     for (int i = 0; i < 8; i++)
     {
         uint8_t child_bit = 1 << i;
-        if (child_bit & child_exits)
+        if (child_bit & node.child_exits)
         {
             LocCode child_loc = (my_loc << 3) | i;
             recursiveCreateIndirect(child_cell, child_loc, depth + 1);
@@ -386,8 +354,8 @@ uint8_t VoxelOctree::checkChildren(const LocCode total_loc_code,
         {
             // TODO: idea: create second function that creates nodes to avoid erasing already created
             uint8_t child_bit = 1 << i;
-			bool has_voxel = child_exits & child_bit;
-			bool has_empty = child_has_empty & child_bit;
+            bool has_voxel = child_exits & child_bit;
+            bool has_empty = child_has_empty & child_bit;
             if (has_voxel && !has_empty)
             {
                 LocCode child_loc = (total_loc_code << 3) | i;
@@ -409,7 +377,7 @@ void VoxelOctree::startGeneration()
     uint8_t depth = 0;
 
     uint8_t child_exits = 0;
-	uint8_t child_has_empty = 0;
+    uint8_t child_has_empty = 0;
 
     std::vector<std::future<uint8_t>> futures;
 
@@ -424,35 +392,34 @@ void VoxelOctree::startGeneration()
         futures[i].wait();
         auto result = futures[i].get();
         uint8_t child_bit = 1 << i;
-		if (result & 1)
-		{
-			child_exits |= child_bit;
-		}
-		if (result & 2)
-		{
-			child_has_empty |= child_bit;
-		}
+        if (result & 1)
+        {
+            child_exits |= child_bit;
+        }
+        if (result & 2)
+        {
+            child_has_empty |= child_bit;
+        }
 
         nodes.insert(gen_maps[i].begin(), gen_maps[i].end());
         gen_maps[i].clear();
     }
 
-
-	if (child_exits)
-	{
-		// remove redundant children
-		for (int i = 0; i < 8; i++)
-		{
-			// TODO: idea: create second function that creates nodes to avoid erasing already created
-			uint8_t child_bit = 1 << i;
-			bool has_voxel = child_exits & child_bit;
-			bool has_empty = child_has_empty & child_bit;
-			if (has_voxel && !has_empty)
-			{
-				LocCode child_loc = (total_loc_code << 3) | i;
-				nodes.erase(child_loc);
-			}
-		}
-		nodes[total_loc_code] = { child_exits };
-	}
+    if (child_exits)
+    {
+        // remove redundant children
+        for (int i = 0; i < 8; i++)
+        {
+            // TODO: idea: create second function that creates nodes to avoid erasing already created
+            uint8_t child_bit = 1 << i;
+            bool has_voxel = child_exits & child_bit;
+            bool has_empty = child_has_empty & child_bit;
+            if (has_voxel && !has_empty)
+            {
+                LocCode child_loc = (total_loc_code << 3) | i;
+                nodes.erase(child_loc);
+            }
+        }
+        nodes[total_loc_code] = { child_exits };
+    }
 }

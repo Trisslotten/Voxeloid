@@ -1,6 +1,7 @@
 #pragma once
 
 #include "util/timer.hpp"
+#include "voxeloctree.hpp"
 
 #include <glm/glm.hpp>
 #include <optional>
@@ -59,6 +60,9 @@ class Renderer
     void createGraphicsPipeline();
     void createFramebuffers();
     void createCommandPool();
+    void createTextureImage();
+	void createTextureImageView();
+	void createTextureSampler();
     void createUniformBuffers();
     void createDescriptorPool();
     void createDescriptorSets();
@@ -71,25 +75,44 @@ class Renderer
     bool isDeviceSuitable(vk::PhysicalDevice device);
     SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice device);
     vk::Extent2D
-        chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);
+    chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);
     vk::ShaderModule createShaderModule(const std::vector<char>& code);
-    void createBuffer(vk::DeviceSize size,
-                      vk::BufferUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::Buffer& buffer,
+    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                      vk::MemoryPropertyFlags properties, vk::Buffer& buffer,
                       vk::DeviceMemory& bufferMemory);
     uint32_t findMemoryType(uint32_t typeFilter,
                             vk::MemoryPropertyFlags properties);
 
+    void createImage3D(uint32_t width, uint32_t height, uint32_t depth,
+                       vk::Format format, vk::ImageTiling tiling,
+                       vk::ImageUsageFlags usage,
+                       vk::MemoryPropertyFlags properties, vk::Image& image,
+                       vk::DeviceMemory& imageMemory);
+
+    vk::CommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(vk::CommandBuffer commandBuffer);
+
+    void copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer,
+                    vk::DeviceSize size);
+
+    void transitionImageLayout(vk::Image image, vk::Format format,
+                               vk::ImageLayout oldLayout,
+                               vk::ImageLayout newLayout);
+
+	void copyBufferToImage3D(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, uint32_t depth);
+
     glm::vec3 camera_pos;
-	float yaw = 0;
-	float pitch = 0;
+    float yaw = 0;
+    float pitch = 0;
+    double last_xpos, last_ypos;
 
     Timer timer;
     float dt = 0.f;
 
     int fps_counter = 0;
     Timer fps_timer;
+
+    VoxelOctree voxels;
 
     uint32_t window_width = 0;
     uint32_t window_height = 0;
@@ -129,6 +152,13 @@ class Renderer
 
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_buffers_memory;
+
+    vk::Buffer staging_buffer;
+    vk::DeviceMemory staging_buffer_memory;
+    vk::Image texture_image;
+    vk::DeviceMemory texture_image_memory;
+	vk::ImageView texture_image_view;
+	vk::Sampler texture_sampler;
 
     vk::CommandPool command_pool;
     std::vector<vk::CommandBuffer> command_buffers;

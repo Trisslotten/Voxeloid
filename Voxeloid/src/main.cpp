@@ -1,20 +1,11 @@
 #include "engine.hpp"
+#include "util/timer.hpp"
+#include "voxeloctree.hpp"
 
 #include <iostream>
-#include "voxeloctree.hpp"
-#include "util/timer.hpp"
-
 
 int main()
 {
-	Timer t;
-	t.Restart();
-	VoxelOctree svo;
-	double time = t.Elapsed();
-
-	std::cout << "Elapsed: " << time << "\n";
-
-	/*
     try
     {
         Engine engine;
@@ -30,9 +21,6 @@ int main()
     {
         std::cerr << e.what() << std::endl;
     }
-	*/
-
-	//system("pause");
 
     return EXIT_SUCCESS;
 }

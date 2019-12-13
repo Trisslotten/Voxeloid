@@ -155,11 +155,13 @@
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\renderer.cpp" />
+    <ClCompile Include="src\util\lodepng.cpp" />
     <ClCompile Include="src\voxeloctree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\engine.hpp" />
     <ClInclude Include="src\renderer.hpp" />
+    <ClInclude Include="src\util\lodepng.h" />
     <ClInclude Include="src\voxeloctree.hpp" />
     <ClInclude Include="src\util\includevulkan.hpp" />
     <ClInclude Include="src\util\runtimeerror.hpp" />
@@ -182,6 +184,7 @@
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</TreatOutputAsContent>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</TreatOutputAsContent>
     </CustomBuild>
+    <None Include="shaders\example.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

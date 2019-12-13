@@ -13,6 +13,10 @@ class VoxelOctree
 
     void printInfo();
 
+
+	size_t getIndirectSize() { return tex_side_length; }
+	std::vector<uint8_t>& getIndirectTexture() { return indirect_texture; }
+
   private:
     // https://geidav.wordpress.com/2014/08/18/advanced-octrees-2-node-representations/
     struct Node
@@ -21,7 +25,11 @@ class VoxelOctree
         //uint32_t loc_code;
     };
 
-    const uint8_t MAX_DEPTH = 6;
+    const static uint8_t MAX_DEPTH = 5;
+
+    const static uint8_t INDIRECT_LEAF = 255;
+    const static uint8_t INDIRECT_EMPTY = 0;
+    const static uint8_t INDIRECT_NODE = 127;
 
     //  first bit (1) = some grandchild has voxel
     // second bit (2) = some grandchild has empty space
@@ -41,9 +49,11 @@ class VoxelOctree
     glm::ivec3 nextCell(glm::ivec3 i, int offset = 1);
     glm::ivec3 nextCellNoWrap(glm::ivec3 i, int offset = 1);
 
-	bool isVoxel(glm::vec3 pos);
+    bool isVoxel(glm::vec3 pos);
+    bool isVoxel2(glm::vec3 pos);
 
-	bool noise(glm::vec3 pos);
+    bool noise(glm::vec3 pos);
+
 
     Node root;
     std::unordered_map<LocCode, Node> gen_maps[8];
@@ -52,7 +62,7 @@ class VoxelOctree
 
     std::vector<uint8_t> indirect_texture;
     size_t tex_side_length = 0;
-	size_t cells_side_length = 0;
+    size_t cells_side_length = 0;
 
     glm::ivec3 next_free_cell{ 0 };
 

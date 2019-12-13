@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 
+#include "util/lodepng.h"
 #include "util/runtimeerror.hpp"
 
 #include <GLFW/glfw3.h>
@@ -45,11 +46,10 @@ bool checkValidationLayerSupport()
     return all_layers_found;
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL
-    debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                  VkDebugUtilsMessageTypeFlagsEXT messageType,
-                  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                  void* pUserData)
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 {
     std::cerr << "VL: " << pCallbackData->pMessage << "\n" << std::endl;
     return VK_FALSE;
@@ -60,14 +60,14 @@ vk::DebugUtilsMessengerCreateInfoEXT createDebugMessengerCreateInfo()
     vk::DebugUtilsMessengerCreateInfoEXT create_info = {};
     vk::DebugUtilsMessageSeverityFlagsEXT ms;
     ms |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
-    ms |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo;
+    //ms |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo;
     ms |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
     ms |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning;
     create_info.messageSeverity = ms;
 
     vk::DebugUtilsMessageTypeFlagsEXT mt;
     mt |= vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral;
-    mt |= vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
+    //mt |= vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
     mt |= vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation;
     create_info.messageType = mt;
     create_info.pfnUserCallback = debugCallback;
@@ -157,6 +157,9 @@ void Renderer::init()
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
+    createTextureImage();
+    createTextureImageView();
+    createTextureSampler();
     createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
@@ -167,6 +170,12 @@ void Renderer::init()
 void Renderer::cleanup()
 {
     device.waitIdle();
+
+    device.destroySampler(texture_sampler);
+    device.destroyImageView(texture_image_view);
+
+    device.freeMemory(texture_image_memory);
+    device.destroyImage(texture_image);
 
     for (size_t i = 0; i < swap_chain_images.size(); i++)
     {
@@ -207,8 +216,8 @@ void Renderer::cleanup()
 
     if (ENABLE_VALIDATION_LAYERS)
     {
-        vk_instance.destroyDebugUtilsMessengerEXT(
-            debug_messenger, nullptr, dldi);
+        vk_instance.destroyDebugUtilsMessengerEXT(debug_messenger, nullptr,
+                                                  dldi);
     }
     vkDestroySurfaceKHR(vk_instance, surface, nullptr);
     vk_instance.destroy();
@@ -227,8 +236,8 @@ void Renderer::render()
 
     if (fences_used[image_index])
     {
-        device.waitForFences(
-            images_in_flight[image_index], VK_TRUE, UINT64_MAX);
+        device.waitForFences(images_in_flight[image_index], VK_TRUE,
+                             UINT64_MAX);
     }
     images_in_flight[image_index] = in_flight_fences[current_frame];
     fences_used[image_index] = true;
@@ -310,8 +319,8 @@ void Renderer::initWindow()
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    window = glfwCreateWindow(
-        window_width, window_height, "Vulkan", nullptr, nullptr);
+    window = glfwCreateWindow(window_width, window_height, "Vulkan", nullptr,
+                              nullptr);
     if (!window)
     {
         THROW_RUNTIME_ERROR("Could not create glfw window");
@@ -331,10 +340,8 @@ void Renderer::createInstance()
     std::vector<const char*> extensions(glfw_extensions,
                                         glfw_extensions + glfw_extension_count);
 
-    vk::ApplicationInfo app_info("EngineTest",
-                                 VK_MAKE_VERSION(0, 1, 0),
-                                 "Voxeloid",
-                                 VK_MAKE_VERSION(0, 1, 0),
+    vk::ApplicationInfo app_info("EngineTest", VK_MAKE_VERSION(0, 1, 0),
+                                 "Voxeloid", VK_MAKE_VERSION(0, 1, 0),
                                  VK_API_VERSION_1_1);
 
     vk::InstanceCreateInfo instance_create_info({}, &app_info);
@@ -565,9 +572,21 @@ void Renderer::createDescriptorSetLayout()
     ubo_layout_binding.stageFlags =
         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
+    vk::DescriptorSetLayoutBinding sampler_layout_binding;
+    sampler_layout_binding.binding = 1;
+    sampler_layout_binding.descriptorType =
+        vk::DescriptorType::eCombinedImageSampler;
+    sampler_layout_binding.descriptorCount = 1;
+    sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
+        ubo_layout_binding, sampler_layout_binding
+    };
+
     vk::DescriptorSetLayoutCreateInfo layout_info = {};
-    layout_info.bindingCount = 1;
-    layout_info.pBindings = &ubo_layout_binding;
+    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+    ;
+    layout_info.pBindings = bindings.data();
 
     descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
 }
@@ -581,23 +600,24 @@ void Renderer::createUniformBuffers()
 
     for (size_t i = 0; i < swap_chain_images.size(); i++)
     {
-        createBuffer(buffer_size,
-                     vk::BufferUsageFlagBits::eUniformBuffer,
+        createBuffer(buffer_size, vk::BufferUsageFlagBits::eUniformBuffer,
                      vk::MemoryPropertyFlagBits::eHostVisible |
                          vk::MemoryPropertyFlagBits::eHostCoherent,
-                     uniform_buffers[i],
-                     uniform_buffers_memory[i]);
+                     uniform_buffers[i], uniform_buffers_memory[i]);
     }
 }
 
 void Renderer::createDescriptorPool()
 {
-    vk::DescriptorPoolSize pool_size;
-    pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
+	std::array<vk::DescriptorPoolSize, 2> poolSizes = {};
+	poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+	poolSizes[0].descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
+	poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+	poolSizes[1].descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
 
     vk::DescriptorPoolCreateInfo pool_info;
-    pool_info.poolSizeCount = 1;
-    pool_info.pPoolSizes = &pool_size;
+    pool_info.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    pool_info.pPoolSizes = poolSizes.data();
     pool_info.maxSets = static_cast<uint32_t>(swap_chain_images.size());
 
     descriptor_pool = device.createDescriptorPool(pool_info);
@@ -622,15 +642,28 @@ void Renderer::createDescriptorSets()
         buffer_info.offset = 0;
         buffer_info.range = 2 * sizeof(glm::vec4);
 
-        vk::WriteDescriptorSet descriptor_write;
-        descriptor_write.dstSet = descriptor_sets[i];
-        descriptor_write.dstBinding = 0;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = vk::DescriptorType::eUniformBuffer;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
+		vk::DescriptorImageInfo imageInfo;
+		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		imageInfo.imageView = texture_image_view;
+		imageInfo.sampler = texture_sampler;
 
-        device.updateDescriptorSets(descriptor_write, {});
+		std::array<vk::WriteDescriptorSet, 2> descriptorWrites;
+
+		descriptorWrites[0].dstSet = descriptor_sets[i];
+		descriptorWrites[0].dstBinding = 0;
+		descriptorWrites[0].dstArrayElement = 0;
+		descriptorWrites[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		descriptorWrites[0].descriptorCount = 1;
+		descriptorWrites[0].pBufferInfo = &buffer_info;
+
+		descriptorWrites[1].dstSet = descriptor_sets[i];
+		descriptorWrites[1].dstBinding = 1;
+		descriptorWrites[1].dstArrayElement = 0;
+		descriptorWrites[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		descriptorWrites[1].descriptorCount = 1;
+		descriptorWrites[1].pImageInfo = &imageInfo;
+
+        device.updateDescriptorSets(descriptorWrites, {});
     }
 }
 
@@ -787,6 +820,79 @@ void Renderer::createCommandPool()
     command_pool = device.createCommandPool(pool_info);
 }
 
+void Renderer::createTextureImage()
+{
+    size_t side = voxels.getIndirectSize();
+    vk::DeviceSize image_size = side * side * side * 4U;
+    createBuffer(image_size, vk::BufferUsageFlagBits::eTransferSrc,
+                 vk::MemoryPropertyFlagBits::eHostVisible |
+                     vk::MemoryPropertyFlagBits::eHostCoherent,
+                 staging_buffer, staging_buffer_memory);
+
+    void* data = device.mapMemory(staging_buffer_memory, 0, image_size);
+    memcpy(data, voxels.getIndirectTexture().data(),
+           static_cast<size_t>(image_size));
+    device.unmapMemory(staging_buffer_memory);
+
+    createImage3D(
+        side, side, side, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+        vk::MemoryPropertyFlagBits::eDeviceLocal, texture_image,
+        texture_image_memory);
+
+    transitionImageLayout(texture_image, vk::Format::eR8G8B8A8Unorm,
+                          vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eTransferDstOptimal);
+
+    copyBufferToImage3D(
+        staging_buffer, texture_image, static_cast<uint32_t>(side),
+        static_cast<uint32_t>(side), static_cast<uint32_t>(side));
+
+    transitionImageLayout(texture_image, vk::Format::eR8G8B8A8Unorm,
+                          vk::ImageLayout::eTransferDstOptimal,
+                          vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    device.destroyBuffer(staging_buffer);
+    device.freeMemory(staging_buffer_memory);
+}
+
+void Renderer::createTextureImageView()
+{
+    vk::ImageViewCreateInfo viewInfo;
+    viewInfo.image = texture_image;
+    viewInfo.viewType = vk::ImageViewType::e3D;
+    viewInfo.format = vk::Format::eR8G8B8A8Unorm;
+    viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    texture_image_view = device.createImageView(viewInfo);
+}
+
+void Renderer::createTextureSampler()
+{
+    vk::SamplerCreateInfo samplerInfo;
+    samplerInfo.magFilter = vk::Filter::eNearest;
+    samplerInfo.minFilter = vk::Filter::eNearest;
+    samplerInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeW = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.anisotropyEnable = VK_FALSE;
+    samplerInfo.maxAnisotropy = 1;
+    samplerInfo.borderColor = vk::BorderColor::eIntOpaqueBlack;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = vk::CompareOp::eAlways;
+    samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
+
+    texture_sampler = device.createSampler(samplerInfo);
+}
+
 void Renderer::createCommandBuffers()
 {
     vk::CommandBufferAllocateInfo alloc_info;
@@ -819,10 +925,8 @@ void Renderer::createCommandBuffers()
                                     graphics_pipeline);
 
         command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                          pipeline_layout,
-                                          0,
-                                          descriptor_sets[i],
-                                          {});
+                                          pipeline_layout, 0,
+                                          descriptor_sets[i], {});
 
         command_buffer.draw(3, 1, 0, 0);
         command_buffer.endRenderPass();
@@ -854,7 +958,7 @@ void Renderer::createSyncObjects()
 
 void Renderer::updateUniformBuffer(uint32_t current_image)
 {
-    float speed = 1.0 * dt;
+    float speed = 0.3 * dt;
     float forward = 0;
     float right = 0;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) forward += speed;
@@ -862,11 +966,19 @@ void Renderer::updateUniformBuffer(uint32_t current_image)
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) right += speed;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) right -= speed;
 
-    float rot_speed = 1.0 * dt;
-    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) pitch += rot_speed;
-    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) pitch -= rot_speed;
-    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) yaw += rot_speed;
-    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) yaw -= rot_speed;
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+    double dx = xpos - last_xpos;
+    double dy = ypos - last_ypos;
+    last_xpos = xpos;
+    last_ypos = ypos;
+    float rot_speed = 0.005;
+    pitch -= rot_speed * dy;
+    yaw += rot_speed * dx;
+    pitch = glm::clamp(pitch, -0.49f*glm::pi<float>(), 0.49f*glm::pi<float>());
+
+    
 
     glm::vec3 camera_dir = glm::quat(glm::vec3(0, yaw, 0)) *
                            glm::quat(glm::vec3(0, 0, pitch)) *
@@ -878,8 +990,8 @@ void Renderer::updateUniformBuffer(uint32_t current_image)
     glm::vec4 vectors[2] = { glm::vec4(camera_pos, 0),
                              glm::vec4(glm::normalize(camera_dir), 0) };
 
-    void* data = device.mapMemory(
-        uniform_buffers_memory[current_image], 0, 2 * sizeof(glm::vec4));
+    void* data = device.mapMemory(uniform_buffers_memory[current_image], 0,
+                                  2 * sizeof(glm::vec4));
     memcpy(data, &vectors, 2 * sizeof(glm::vec4));
     device.unmapMemory(uniform_buffers_memory[current_image]);
 }
@@ -933,7 +1045,7 @@ bool Renderer::isDeviceSuitable(vk::PhysicalDevice device)
 }
 
 SwapChainSupportDetails
-    Renderer::querySwapChainSupport(vk::PhysicalDevice device)
+Renderer::querySwapChainSupport(vk::PhysicalDevice device)
 {
     SwapChainSupportDetails details;
 
@@ -945,7 +1057,7 @@ SwapChainSupportDetails
 }
 
 vk::Extent2D
-    Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities)
+Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities)
 {
     if (capabilities.currentExtent.width != UINT32_MAX)
     {
@@ -955,12 +1067,12 @@ vk::Extent2D
     {
         vk::Extent2D actual_extent = { window_width, window_height };
 
-        actual_extent.width = glm::clamp(actual_extent.width,
-                                         capabilities.minImageExtent.width,
-                                         capabilities.maxImageExtent.width);
-        actual_extent.height = glm::clamp(actual_extent.height,
-                                          capabilities.minImageExtent.height,
-                                          capabilities.maxImageExtent.height);
+        actual_extent.width =
+            glm::clamp(actual_extent.width, capabilities.minImageExtent.width,
+                       capabilities.maxImageExtent.width);
+        actual_extent.height =
+            glm::clamp(actual_extent.height, capabilities.minImageExtent.height,
+                       capabilities.maxImageExtent.height);
         return actual_extent;
     }
 }
@@ -974,11 +1086,9 @@ vk::ShaderModule Renderer::createShaderModule(const std::vector<char>& code)
     return device.createShaderModule(create_info);
 }
 
-void Renderer::createBuffer(vk::DeviceSize size,
-                            vk::BufferUsageFlags usage,
+void Renderer::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                             vk::MemoryPropertyFlags properties,
-                            vk::Buffer& buffer,
-                            vk::DeviceMemory& bufferMemory)
+                            vk::Buffer& buffer, vk::DeviceMemory& bufferMemory)
 {
     vk::BufferCreateInfo buffer_info = {};
     buffer_info.size = size;
@@ -1015,4 +1125,155 @@ uint32_t Renderer::findMemoryType(uint32_t typeFilter,
     }
 
     THROW_RUNTIME_ERROR("Failed to find suitable memory type!");
+}
+
+void Renderer::createImage3D(uint32_t width, uint32_t height, uint32_t depth,
+                             vk::Format format, vk::ImageTiling tiling,
+                             vk::ImageUsageFlags usage,
+                             vk::MemoryPropertyFlags properties,
+                             vk::Image& image, vk::DeviceMemory& image_memory)
+{
+    vk::ImageCreateInfo image_info;
+    image_info.imageType = vk::ImageType::e3D;
+    image_info.extent.width = static_cast<uint32_t>(width);
+    image_info.extent.height = static_cast<uint32_t>(height);
+    image_info.extent.depth = static_cast<uint32_t>(depth);
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.format = format;
+    image_info.tiling = tiling;
+    image_info.initialLayout = vk::ImageLayout::eUndefined;
+    image_info.usage = usage;
+    image_info.sharingMode = vk::SharingMode::eExclusive;
+    image_info.samples = vk::SampleCountFlagBits::e1;
+
+    image = device.createImage(image_info);
+
+    vk::MemoryRequirements mem_requirements =
+        device.getImageMemoryRequirements(image);
+
+    vk::MemoryAllocateInfo alloc_info;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex =
+        findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+    image_memory = device.allocateMemory(alloc_info);
+
+    device.bindImageMemory(texture_image, image_memory, 0);
+}
+
+vk::CommandBuffer Renderer::beginSingleTimeCommands()
+{
+    vk::CommandBufferAllocateInfo allocInfo;
+    allocInfo.level = vk::CommandBufferLevel::ePrimary;
+    allocInfo.commandPool = command_pool;
+    allocInfo.commandBufferCount = 1;
+
+    vk::CommandBuffer commandBuffer =
+        device.allocateCommandBuffers(allocInfo)[0];
+
+    vk::CommandBufferBeginInfo beginInfo;
+    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+    commandBuffer.begin(beginInfo);
+
+    return commandBuffer;
+}
+
+void Renderer::endSingleTimeCommands(vk::CommandBuffer commandBuffer)
+{
+    commandBuffer.end();
+
+    vk::SubmitInfo submitInfo;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    graphics_queue.submit(submitInfo, nullptr);
+    graphics_queue.waitIdle();
+
+    device.freeCommandBuffers(command_pool, commandBuffer);
+}
+
+void Renderer::copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer,
+                          vk::DeviceSize size)
+{
+    vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    vk::BufferCopy copyRegion;
+    copyRegion.size = size;
+    commandBuffer.copyBuffer(srcBuffer, dstBuffer, copyRegion);
+
+    endSingleTimeCommands(commandBuffer);
+}
+
+void Renderer::transitionImageLayout(vk::Image image, vk::Format format,
+                                     vk::ImageLayout oldLayout,
+                                     vk::ImageLayout newLayout)
+{
+    vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    vk::ImageMemoryBarrier barrier;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    vk::PipelineStageFlags sourceStage;
+    vk::PipelineStageFlags destinationStage;
+
+    if (oldLayout == vk::ImageLayout::eUndefined &&
+        newLayout == vk::ImageLayout::eTransferDstOptimal)
+    {
+        //barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        destinationStage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (oldLayout == vk::ImageLayout::eTransferDstOptimal &&
+             newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        sourceStage = vk::PipelineStageFlagBits::eTransfer;
+        destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+    }
+    else
+    {
+        THROW_RUNTIME_ERROR("Unsupported layout transition");
+    }
+
+    commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, {}, {},
+                                  barrier);
+
+    endSingleTimeCommands(commandBuffer);
+}
+
+void Renderer::copyBufferToImage3D(vk::Buffer buffer, vk::Image image,
+                                   uint32_t width, uint32_t height,
+                                   uint32_t depth)
+{
+    vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    vk::BufferImageCopy region;
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = { 0, 0, 0 };
+    region.imageExtent = { width, height, depth };
+
+    commandBuffer.copyBufferToImage(
+        buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
+
+    endSingleTimeCommands(commandBuffer);
 }
